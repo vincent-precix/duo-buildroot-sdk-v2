@@ -912,7 +912,7 @@ function cvi_setup_env()
     return 1
   fi
 
-  export BR_DIR="$TOP_DIR"/buildroot-2024.02
+  export BR_DIR="$TOP_DIR"/buildroot
   export BR_BOARD=${MV_BOARD}
   export BR_OVERLAY_DIR=${BR_DIR}/board/${MV_VENDOR}/${MV_BOARD}/overlay
   export BR_DEFCONFIG=${BR_BOARD}_defconfig
