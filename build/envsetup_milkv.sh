@@ -394,6 +394,11 @@ function build_tdl_sdk()
   test "$?" -ne 0 && print_notice "${FUNCNAME[0]}() failed !!" && popd && return 1
   popd
 
+  if [[ -d "${TPU_SDK_INSTALL_PATH}/bin" ]]; then
+    mkdir -p "${SYSTEM_OUT_DIR}"/usr/bin/tpu
+    cp -a "${TPU_SDK_INSTALL_PATH}"/bin/* "${SYSTEM_OUT_DIR}"/usr/bin/tpu/
+  fi
+
   if [[ -d "${TDL_SDK_PATH}/install/bin" ]]; then
     mkdir -p "${SYSTEM_OUT_DIR}"/usr/bin/ai
     cp -a "${TDL_SDK_PATH}"/install/bin/sample_* "${SYSTEM_OUT_DIR}"/usr/bin/ai/
