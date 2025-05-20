@@ -4,7 +4,7 @@
 #
 ################################################################################
 
-FREERADIUS_SERVER_VERSION = 3.2.3
+FREERADIUS_SERVER_VERSION = 3.2.6
 FREERADIUS_SERVER_SOURCE = \
 	freeradius-server-$(FREERADIUS_SERVER_VERSION).tar.bz2
 FREERADIUS_SERVER_SITE = https://freeradius.org/ftp/pub/freeradius
@@ -117,6 +117,10 @@ FREERADIUS_SERVER_CONF_OPTS += --with-pcap
 FREERADIUS_SERVER_DEPENDENCIES += libpcap
 else
 FREERADIUS_SERVER_CONF_OPTS += --without-pcap
+endif
+
+ifeq ($(BR2_PACKAGE_LIBXCRYPT),y)
+FREERADIUS_SERVER_DEPENDENCIES += libxcrypt
 endif
 
 ifeq ($(BR2_PACKAGE_LINUX_PAM),y)

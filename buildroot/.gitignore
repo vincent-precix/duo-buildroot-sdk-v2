@@ -1,4 +1,4 @@
-/output
+/output*
 /dl
 /.auto.deps
 /.config.cmd
@@ -13,6 +13,3 @@
 *.rej
 *~
 *.pyc
-
-# add for cvitek board
- board/cvitek/
