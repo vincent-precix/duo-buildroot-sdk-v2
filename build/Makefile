@@ -31,7 +31,6 @@ qstrip = $(strip $(subst ",,$(1)))
 # Default actions
 ################################################################################
 NPROC := $(shell nproc)
-
 export CHIP_ARCH_L := $(shell echo $(CHIP_ARCH) | tr A-Z a-z)
 export BORAD_FOLDER_PATH := ${BUILD_PATH}/boards/${CHIP_ARCH_L}/${PROJECT_FULLNAME}
 
@@ -90,13 +89,6 @@ ifeq (${RELEASE_VERSION},1)
 uboot_release_action := ${Q}sed -i "s/CONFIG_BOOTDELAY=1/CONFIG_BOOTDELAY=-2/g" ${UBOOT_PATH}/${UBOOT_OUTPUT_FOLDER}/.config
 endif
 
-# Set CONFIG_BOOTLOGO config in defconfig
-ifeq (${ENABLE_BOOTLOGO},1)
-uboot_bootlogo_action := ${Q}sed -i "s/CONFIG_BOOTLOGO=n/CONFIG_BOOTLOGO=y/g" ${UBOOT_PATH}/${UBOOT_OUTPUT_FOLDER}/.config
-else
-uboot_bootlogo_action := ${Q}sed -i "s/CONFIG_BOOTLOGO=y/CONFIG_BOOTLOGO=n/g" ${UBOOT_PATH}/${UBOOT_OUTPUT_FOLDER}/.config
-endif
-
 # Set CONFIG_USE_4K_ERASE_SIZE_FOR_JFFS2 config in defconfig
 ifeq (${CONFIG_USE_4K_ERASE_SIZE_FOR_JFFS2},y)
 uboot_erasesize_set := ${Q}sed -in "s/.*CONFIG_SPI_FLASH_USE_4K_SECTORS is not set/CONFIG_SPI_FLASH_USE_4K_SECTORS=y/g" ${UBOOT_PATH}/${UBOOT_OUTPUT_FOLDER}/.config
@@ -140,18 +132,29 @@ ifeq ($(CONFIG_UBOOT_SPL_CUSTOM),y)
 		${Q}-cat ${UBOOT-SPL_DEFAULT_CONFIG_PATH} >> ${UBOOT_OUTPUT_CONFIG_PATH}
 endif
 	$(call uboot_release_action)
-	$(call uboot_bootlogo_action)
 ifeq ($(STORAGE_TYPE), spinor)
 	$(call uboot_erasesize_set)
 endif
 
 UBOOT_CVI_BOARD_INIT_PATH := ${UBOOT_PATH}/board/cvitek/cvi_board_init.c
 UBOOT_CVITEK_PATH := ${UBOOT_PATH}/include/cvitek/cvitek.h
+ifeq ($(CONFIG_BOOT_IMAGE_SINGLE_DTB), y)
+	BOARD_DTS_SEARCH_PATH = ${BUILD_PATH}/boards/${CHIP_ARCH_L}/${PROJECT_FULLNAME}
+else
+	BOARD_DTS_SEARCH_PATH = ${BUILD_PATH}/boards/${CHIP_ARCH_L}
+endif
 
 u-boo%: export KBUILD_OUTPUT=${UBOOT_PATH}/${UBOOT_OUTPUT_FOLDER}
+ifeq ($(CONFIG_UBOOT_FASTBOOT),y)
+u-boo%: export RELEASE=1
+u-boo%: export CONFIG_UBOOT_FASTBOOT:=${CONFIG_UBOOT_FASTBOOT}
+else
 u-boo%: export RELEASE=${RELEASE_VERSION}
+endif
 u-boo%: export CVIBOARD=${BOARD}
 u-boo%: export CONFIG_SKIP_RAMDISK:=${CONFIG_SKIP_RAMDISK}
+u-boo%: export CONFIG_ENABLE_EMMC_HW_RESET_QFN:=${CONFIG_ENABLE_EMMC_HW_RESET_QFN}
+u-boo%: export CONFIG_ENABLE_EMMC_SET_RESET_OTP:=${CONFIG_ENABLE_EMMC_SET_RESET_OTP}
 u-boo%: export CONFIG_USE_DEFAULT_ENV:=${CONFIG_USE_DEFAULT_ENV}
 u-boo%: export MULTI_FIP=$(if ${CONFIG_MULTI_FIP},1,0)
 u-boo%: export CROSS_COMPILE=$(patsubst "%",%,$(CONFIG_CROSS_COMPILE))
@@ -167,12 +170,12 @@ u-boot-dts:
 ifeq ($(UBOOT_SRC), u-boot-2021.10)
 # U-boot doesn't has arch/arm64
 ifeq ($(ARCH), arm64)
-	${Q}find ${BUILD_PATH}/boards/${CHIP_ARCH_L} \
+	${Q}find ${BOARD_DTS_SEARCH_PATH}  \
 		\( -path "*linux/*.dts*" -o -path "*dts_${ARCH}/*.dts*" \) \
 		-exec cp {} ${UBOOT_PATH}/arch/arm/dts/ \;
 	${Q}find ${DTS_DEFATUL_PATHS} -name *.dts* -exec cp {} ${UBOOT_PATH}/arch/arm/dts/ \;
 else
-	${Q}find ${BUILD_PATH}/boards/${CHIP_ARCH_L} \
+	${Q}find ${BOARD_DTS_SEARCH_PATH}  \
 		\( -path "*linux/*.dts*" -o -path "*dts_${ARCH}/*.dts*" \) \
 		-exec cp {} ${UBOOT_PATH}/arch/${ARCH}/dts/ \;
 	${Q}find ${DTS_DEFATUL_PATHS} -name *.dts* -exec cp {} ${UBOOT_PATH}/arch/${ARCH}/dts/ \;
@@ -216,7 +219,11 @@ u-boot-clean:
 ifeq ($(CONFIG_BUILD_FOR_DEBUG),y)
 KERNEL_CONFIG_NAME := ${BRAND}_${PROJECT_FULLNAME}_defconfig
 else
+ifeq ($(CONFIG_KERNEL_FASTBOOT),y)
+KERNEL_CONFIG_NAME := ${BRAND}_${PROJECT_FULLNAME}_fastboot_defconfig
+else
 KERNEL_CONFIG_NAME := ${BRAND}_${PROJECT_FULLNAME}_rls_defconfig
+endif
 endif
 
 KERNEL_VERSION ?= -tag-$(shell git -C ${KERNEL_PATH} describe --exact-match HEAD 2>/dev/null)
@@ -238,18 +245,18 @@ endef
 
 ifeq ($(CHIP_ARCH),$(filter $(CHIP_ARCH),CV181X CV180X ATHENA2))
 define copy_header_action
-	${Q}cp -r ${OSDRV_PATH}/interdrv/${MW_VER}/include/chip/$(shell echo $(CHIP_ARCH) | tr A-Z a-z)/uapi/linux/* ${1}/linux/
-	${Q}cp -r ${OSDRV_PATH}/interdrv/${MW_VER}/include/common/uapi/linux/* ${1}/linux/
+	${Q}cp -r ${OSDRV_PATH}/interdrv/include/chip/$(shell echo $(CHIP_ARCH) | tr A-Z a-z)/uapi/linux/* ${1}/linux/
+	${Q}cp -r ${OSDRV_PATH}/interdrv/include/common/uapi/linux/* ${1}/linux/
 	${Q}cp ${KERNEL_PATH}/drivers/staging/android/uapi/ion.h ${1}/linux/
 	${Q}cp ${KERNEL_PATH}/drivers/staging/android/uapi/ion_cvitek.h ${1}/linux/
 	${Q}cp ${KERNEL_PATH}/include/uapi/linux/dma-buf.h ${1}/linux/
 endef
 else
 define copy_header_action
-	${Q}cp -r ${OSDRV_PATH}/interdrv/${MW_VER}/vip/chip/$(shell echo $(CHIP_ARCH) | tr A-Z a-z)/uapi/* ${1}/linux/
-	${Q}cp -r ${OSDRV_PATH}/interdrv/${MW_VER}/base/uapi/* ${1}/linux/
-	${Q}cp -r ${OSDRV_PATH}/interdrv/${MW_VER}/include/uapi/* ${1}/linux/
-	${Q}cp ${OSDRV_PATH}/interdrv/${MW_VER}/usb/gadget/function/f_cvg.h ${1}/linux/
+	${Q}cp -r ${OSDRV_PATH}/interdrv/vip/chip/$(shell echo $(CHIP_ARCH) | tr A-Z a-z)/uapi/* ${1}/linux/
+	${Q}cp -r ${OSDRV_PATH}/interdrv/base/uapi/* ${1}/linux/
+	${Q}cp -r ${OSDRV_PATH}/interdrv/include/uapi/* ${1}/linux/
+	${Q}cp ${OSDRV_PATH}/interdrv/usb/gadget/function/f_cvg.h ${1}/linux/
 	${Q}cp ${KERNEL_PATH}/drivers/staging/android/uapi/ion.h ${1}/linux/
 	${Q}cp ${KERNEL_PATH}/drivers/staging/android/uapi/ion_cvitek.h ${1}/linux/
 	${Q}cp ${KERNEL_PATH}/include/uapi/linux/dma-buf.h ${1}/linux/
@@ -297,6 +304,14 @@ kernel-setconfig: ${KERNEL_OUTPUT_CONFIG_PATH}
 kernel-build: ${KERNEL_OUTPUT_CONFIG_PATH}
 	$(call print_target)
 	${Q}echo LOCALVERSION=${LOCALVERSION}
+ifneq (${CONFIG_SUSPEND},y)
+	${Q}$(MAKE) -j${NPROC} -C ${KERNEL_PATH} O=${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER} setconfig 'SCRIPT_ARG="SUSPEND=n"'
+	${Q}$(MAKE) -j${NPROC} -C ${KERNEL_PATH} O=${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER} savedefconfig
+endif
+ifeq (${CONFIG_ENABLE_EMMC_HW_RESET_QFN},y)
+	${Q}$(MAKE) -j${NPROC} -C ${KERNEL_PATH} O=${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER} setconfig 'SCRIPT_ARG="ENABLE_EMMC_HW_RESET_QFN=y"'
+	${Q}$(MAKE) -j${NPROC} -C ${KERNEL_PATH} O=${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER} savedefconfig
+endif
 	${Q}$(MAKE) -j${NPROC} -C ${KERNEL_PATH} O=${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER} olddefconfig
 	${Q}$(MAKE) -j${NPROC} -C ${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER} Image modules
 	${Q}$(MAKE) -j${NPROC} -C ${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER} modules_install headers_install INSTALL_HDR_PATH=${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER}/$(ARCH)/usr
@@ -317,7 +332,7 @@ kernel-dts: ${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER}
 	${Q}ln -snrf ${CVI_BOARD_MEMMAP_H_PATH} ${KERNEL_PATH}/scripts/dtc/include-prefixes/
 	${Q}find ${KERNEL_PATH}/arch/${ARCH}/boot/dts/${BRAND}/ -type l -delete
 	${Q}find ${DTS_DEFATUL_PATHS} -name *.dts* -exec ln -sf {} ${KERNEL_PATH}/arch/${ARCH}/boot/dts/${BRAND}/ \;
-	${Q}find ${BUILD_PATH}/boards/${CHIP_ARCH_L} \
+	${Q}find ${BOARD_DTS_SEARCH_PATH} \
 		\( -path "*linux/*.dts*" -o -path "*dts_${ARCH}/*.dts*" \) \
 		-exec ln -sf {} ${KERNEL_PATH}/arch/${ARCH}/boot/dts/${BRAND}/ \;
 	${Q}$(MAKE) -j${NPROC} -C ${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER} dtbs
@@ -334,6 +349,7 @@ ifeq ($(patsubst "%",%,$(CONFIG_ARCH)),arm64)
 	# Since we will support aarch32 user space even if the kernel is aarch64, install aarch32 headers also
 	$(call copy_header_action, ${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER}/arm/usr/include)
 endif
+	${Q}rm -rf ${KERNEL_PATH}/build/kernel_output
 	${Q}ln -sf ${KERNEL_PATH}/${KERNEL_OUTPUT_FOLDER}  ${KERNEL_PATH}/build/kernel_output
 
 ifeq ($(CONFIG_TOOLCHAIN_GLIBC_ARM64),y)
@@ -403,7 +419,7 @@ endif
 
 	${Q}python3 "${BUILD_PATH}/scripts/boards_scan.py" ${BOOT_IMAGE_ARG}
 	${Q}mv "${BUILD_PATH}/output/multi.its.tmp" "${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/multi.its"
-ifeq ($(CONFIG_KERNEL_UNCOMPRESSED),y)
+ifneq ($(CONFIG_KERNEL_UNCOMPRESSED)$(CONFIG_KERNEL_FASTBOOT), )
 	${Q}sed -i "s/data = \/incbin\/(\".\/Image.gz\");/data = \/incbin\/(\".\/Image\");/g" ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/multi.its
 else
 	${Q}${KERNEL_COMPRESS} -c -9 -f -k ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/Image > ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/Image.${KERNEL_COMPRESS}
@@ -421,7 +437,7 @@ ifeq ($(CONFIG_KERNEL_ENTRY_HACK),y)
 	${Q}sed -i "s/load = <0x0 0x.*>;/load = <0x0 $(CONFIG_KERNEL_ENTRY_HACK_ADDR)>;/g" ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/multi.its
 	${Q}sed -i "s/entry = <0x0 0x.*>;/entry = <0x0 $(CONFIG_KERNEL_ENTRY_HACK_ADDR)>;/g" ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/multi.its
 endif
-	$(COMMON_TOOLS_PATH)/prebuild/mkimage -f ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/multi.its -k $(RAMDISK_PATH)/keys -r ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/boot.itb
+	${UBOOT_PATH}/build/${CHIP}_${BOARD}/tools/mkimage -f ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/multi.its -k $(RAMDISK_PATH)/keys -r ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/boot.itb
 
 ramboot: kernel-dts
 	$(call print_target)
@@ -438,7 +454,7 @@ ifeq ($(CONFIG_KERNEL_ENTRY_HACK),y)
 	${Q}sed -i "s/load = <0x0 0x.*>;/load = <0x0 $(CONFIG_KERNEL_ENTRY_HACK_ADDR)>;/g" ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/multi.its
 	${Q}sed -i "s/entry = <0x0 0x.*>;/entry = <0x0 $(CONFIG_KERNEL_ENTRY_HACK_ADDR)>;/g" ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/multi.its
 endif
-	$(COMMON_TOOLS_PATH)/prebuild/mkimage -f ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/multi.its -k $(RAMDISK_PATH)/keys -r $(OUTPUT_DIR)/ramboot.itb
+	${UBOOT_PATH}/build/${CHIP}_${BOARD}/tools/mkimage -f ${RAMDISK_PATH}/${RAMDISK_OUTPUT_FOLDER}/multi.its -k $(RAMDISK_PATH)/keys -r $(OUTPUT_DIR)/ramboot.itb
 
 kernel-clean:
 	$(call print_target)
@@ -550,24 +566,67 @@ br-rootfs-prepare:export CROSS_COMPILE_KERNEL=$(patsubst "%",%,$(CONFIG_CROSS_CO
 br-rootfs-prepare:export CROSS_COMPILE_SDK=$(patsubst "%",%,$(CONFIG_CROSS_COMPILE_SDK))
 br-rootfs-prepare:
 	$(call print_target)
-	# copy ko and mmf libs
-	${Q}mkdir -p $(BR_OVERLAY_DIR)/mnt/system
-	${Q}cp -arf ${SYSTEM_OUT_DIR}/* $(BR_OVERLAY_DIR)/mnt/system/
-	# strip
-	${Q}find $(BR_OVERLAY_DIR) -name "*.ko" -type f -printf 'striping %p\n' -exec $(CROSS_COMPILE_KERNEL)strip --strip-unneeded {} \;
-	${Q}find $(BR_OVERLAY_DIR) -name "*.so*" -type f -printf 'striping %p\n' -exec $(CROSS_COMPILE_KERNEL)strip --strip-all {} \;
-	${Q}find $(BR_OVERLAY_DIR) -executable -type f ! -name "*.sh" ! -path "*etc*" ! -path "*.ko" -printf 'striping %p\n' -exec $(CROSS_COMPILE_SDK)strip --strip-all {} 2>/dev/null \;
 
-br-rootfs-pack:export TARGET_OUTPUT_DIR=$(BR_DIR)/output/$(BR_BOARD)
-br-rootfs-pack:
+	# copy ko and mmf libs
+	${Q}mkdir -p $(BR_ROOTFS_DIR)/mnt/system
+	${Q}cp -arf ${SYSTEM_OUT_DIR}/* $(BR_ROOTFS_DIR)/mnt/system/
+
+	# copy milkv buildroot overlay files
+	${Q}cp -arf $(TOP_DIR)/device/generic/br_overlay/common/* $(BR_ROOTFS_DIR)/
+ifneq ($(wildcard $(TOP_DIR)/device/generic/br_overlay/$(SDK_VER)),)
+	${Q}cp -arf $(TOP_DIR)/device/generic/br_overlay/$(SDK_VER)/* $(BR_ROOTFS_DIR)/
+endif
+
+	# copy milkv rootfs overlay files
+	${Q}cp -arf $(TOP_DIR)/device/generic/rootfs_overlay/common/* $(BR_ROOTFS_DIR)/
+ifneq ($(wildcard $(TOP_DIR)/device/generic/rootfs_overlay/$(SDK_VER)),)
+	${Q}cp -arf $(TOP_DIR)/device/generic/rootfs_overlay/$(SDK_VER)/* $(BR_ROOTFS_DIR)/
+endif
+ifneq ($(wildcard $(TOP_DIR)/device/generic/rootfs_overlay/$(BR_BOARD_TYPE)),)
+	${Q}cp -arf $(TOP_DIR)/device/generic/rootfs_overlay/$(BR_BOARD_TYPE)/* $(BR_ROOTFS_DIR)/
+endif
+
+	# copy milkv board overlay files
+ifneq ($(wildcard $(TOP_DIR)/device/$(MV_BOARD)/overlay),)
+	${Q}cp -arf $(TOP_DIR)/device/$(MV_BOARD)/overlay/* $(BR_ROOTFS_DIR)/
+endif
+
+	# clean this directory for multiple targets
+	${Q}rm -rf $(BR_OVERLAY_DIR)
+
+	# strip
+	${Q}find $(BR_ROOTFS_DIR) -name "*.ko" -type f -printf 'striping %p\n' -exec $(CROSS_COMPILE_KERNEL)strip --strip-unneeded {} \;
+	${Q}find $(BR_ROOTFS_DIR) -name "*.so*" -type f -printf 'striping %p\n' -exec $(CROSS_COMPILE_KERNEL)strip --strip-all {} \;
+	${Q}find $(BR_ROOTFS_DIR) -executable -type f ! -name "*.sh" ! -path "*etc*" ! -path "*.ko" -printf 'striping %p\n' -exec $(CROSS_COMPILE_SDK)strip --strip-all {} 2>/dev/null \;
+
+	# copy all files to buildroot overlay dir
+	${Q}mkdir -p $(BR_OVERLAY_DIR)
+	${Q}cp -arf $(BR_ROOTFS_DIR)/* $(BR_OVERLAY_DIR)
+
+BR_TARGET_OUTPUT_DIR=$(BR_DIR)/output/$(BR_BOARD)
+
+$(BR_DIR)/output/$(BR_BOARD)/.config:
+	$(call print_target)
+	${Q}$(MAKE) -C $(BR_DIR) $(BR_DEFCONFIG) BR2_TOOLCHAIN_EXTERNAL_PATH=$(CROSS_COMPILE_PATH) TARGET_OUTPUT_DIR=$(BR_TARGET_OUTPUT_DIR)
+
+br-menuconfig: $(BR_DIR)/output/$(BR_BOARD)/.config
+	${Q}$(MAKE) -C $(BR_DIR) menuconfig BR2_TOOLCHAIN_EXTERNAL_PATH=$(CROSS_COMPILE_PATH) TARGET_OUTPUT_DIR=$(BR_TARGET_OUTPUT_DIR)
+	${Q}$(MAKE) -C $(BR_DIR) savedefconfig BR2_TOOLCHAIN_EXTERNAL_PATH=$(CROSS_COMPILE_PATH) TARGET_OUTPUT_DIR=$(BR_TARGET_OUTPUT_DIR)
+
+
+br-rootfs-pack:export TARGET_OUTPUT_DIR=$(BR_TARGET_OUTPUT_DIR)
+br-rootfs-pack: 
 	$(call print_target)
 	${Q}$(MAKE) -C $(BR_DIR) $(BR_DEFCONFIG) BR2_TOOLCHAIN_EXTERNAL_PATH=$(CROSS_COMPILE_PATH)
-	${Q}$(MAKE) -j${NPROC} -C $(BR_DIR)
+	${Q}$(BR_DIR)/utils/brmake -j${NPROC} -C $(BR_DIR)
 	# ${Q}rm -rf $(BR_ROOTFS_DIR)/*
+	${Q}rm -rf $(BR_MV_VENDOR_DIR)
+
 	# copy rootfs to rawimg dir
 	${Q}cp $(TARGET_OUTPUT_DIR)/images/rootfs.ext4 $(OUTPUT_DIR)/rawimages/rootfs_ext4.$(STORAGE_TYPE)
 	$(call raw2cimg ,rootfs_ext4.$(STORAGE_TYPE))
 
+# TODO A/B boot is currently not supported when CONFIG_BUILDROOT_FS is enabled
 ifeq ($(CONFIG_BUILDROOT_FS),y)
 rootfs:br-rootfs-prepare
 rootfs:br-rootfs-pack
@@ -576,9 +635,26 @@ rootfs:rootfs-pack
 rootfs:
 	$(call print_target)
 ifneq ($(STORAGE_TYPE), sd)
+ifeq ($(CONFIG_AB_SYSTEM),y)
+	${Q}cp $(OUTPUT_DIR)/rawimages/rootfs.$(STORAGE_TYPE) $(OUTPUT_DIR)/rawimages/rootfs_b.$(STORAGE_TYPE)
+	$(call raw2cimg ,rootfs_b.$(STORAGE_TYPE))
+endif
 	$(call raw2cimg ,rootfs.$(STORAGE_TYPE))
 endif
 endif
+
+sd_image:
+	$(call print_target)
+	-${Q}rm  $(OUTPUT_DIR)/fs
+ifeq ($(CONFIG_BUILDROOT_FS),y)
+	${Q}rm -rf $(OUTPUT_DIR)/br-rootfs
+	${Q}ln -s $(OUTPUT_DIR)/br-rootfs $(OUTPUT_DIR)/fs
+	${Q}mkdir $(OUTPUT_DIR)/br-rootfs
+	${Q}tar xf $(BR_DIR)/output/$(BR_BOARD)/images/rootfs.tar.xz -C $(OUTPUT_DIR)/br-rootfs
+else
+	${Q}ln -s $(OUTPUT_DIR)/rootfs $(OUTPUT_DIR)/fs
+endif
+	$(TOP_DIR)/device/gen_burn_image_sd.sh $(OUTPUT_DIR)
 
 jffs2:
 	$(call print_target)

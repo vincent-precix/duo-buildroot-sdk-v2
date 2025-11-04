@@ -180,7 +180,6 @@ static DEFINE_SPINLOCK(cv180x_clk_lock);
 struct cv180x_clock_data {
 	void __iomem *base;
 	spinlock_t *lock;
-	struct clk_hw_onecell_data hw_data;
 #ifdef CONFIG_PM_SLEEP
 	uint32_t clken_saved_regs[REG_CLK_EN_NUM];
 	uint32_t clksel_saved_regs[REG_CLK_SEL_NUM];
@@ -194,6 +193,7 @@ struct cv180x_clock_data {
 	uint32_t cam1pll_ssc_syn_set_saved_reg;
 	uint32_t pll_g6_csr_saved_regs[REG_PLL_G6_CSR_NUM];
 #endif /* CONFIG_PM_SLEEP */
+	struct clk_hw_onecell_data hw_data;
 };
 
 struct cv180x_gate {
@@ -2673,7 +2673,7 @@ static void cv180x_clk_resume(void)
 
 	/* switch clock to xtal */
 	writel(0xffffffff, clk_data->base + REG_CLK_BYP_0);
-	writel(0x0000000f, clk_data->base + REG_CLK_BYP_1);
+	writel(0xffffffff, clk_data->base + REG_CLK_BYP_1);
 
 	memcpy_toio(clk_data->base + REG_CLK_EN_START,
 		    clk_data->clken_saved_regs,
@@ -2691,9 +2691,9 @@ static void cv180x_clk_resume(void)
 		    clk_data->g2_clkdiv_saved_regs,
 		    REG_CLK_G2_DIV_NUM * 4);
 
-	memcpy_toio(clk_data->base + REG_PLL_G6_CSR_START,
-		    clk_data->pll_g6_csr_saved_regs,
-		    REG_PLL_G6_CSR_NUM * 4);
+	//memcpy_toio(clk_data->base + REG_PLL_G6_CSR_START,
+	//	    clk_data->pll_g6_csr_saved_regs,
+	//	    REG_PLL_G6_CSR_NUM * 4);
 
 	/* wait for pll setting updated */
 	while (readl(clk_data->base + REG_PLL_G6_STATUS) & 0x7) {

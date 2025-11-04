@@ -1,15 +1,8 @@
-# sg200x-evb boards.
+# Milk-V Duo series buildroot SDK V2
 
-step1:
 ```
-git clone -b sg200x-evb git@github.com:sophgo/sophpi.git
-cd sophpi
-./scripts/repo_clone.sh --gitclone scripts/subtree.xml
+./build.sh lunch
 ```
-step2:
-```
-source build/cvisetup.sh
-defconfig sg2002_wevb_riscv64_sd
-clean_all
-build_all
-```
+
+For more detailed documentation, please refer to: [https://milkv.io/docs/duo/getting-started/buildroot-sdk](https://milkv.io/docs/duo/getting-started/buildroot-sdk)
+

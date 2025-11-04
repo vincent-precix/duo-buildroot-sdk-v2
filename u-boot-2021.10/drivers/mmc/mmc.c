@@ -2445,11 +2445,14 @@ static int mmc_startup_v4(struct mmc *mmc)
 	 *     0x2: RST_n signal is permanently disabled
 	 *     0x3: Reserved
 	 */
+#ifdef CONFIG_ENABLE_EMMC_SET_RESET_OTP
+	pr_debug("Set emmc reset otp bit\n");
 	if (IS_MMC(mmc) && ext_csd[EXT_CSD_RST_N_FUNCTION] == 0) {
 		err = mmc_switch(mmc, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_RST_N_FUNCTION, 1);
 		if (err)
 			pr_err("fail to enable eMMC RST_n signal. err: %d.\n", err);
 	}
+#endif
 
 	mmc->wr_rel_set = ext_csd[EXT_CSD_WR_REL_SET];
 

@@ -4,7 +4,7 @@ SHELL=/bin/bash
 export CVIARCH_L := $(shell echo $(CVIARCH) | tr A-Z a-z)
 #
 export CHIP_ARCH_L := $(shell echo $(CHIP_ARCH) | tr A-Z a-z)
-INTERDRV_PATH := interdrv/$(shell echo $(MW_VER))
+INTERDRV_PATH := interdrv
 
 ifeq ($(KERNEL_DIR), )
 $(info Please set KERNEL_DIR global variable!!)
@@ -23,13 +23,11 @@ ifeq ($(CONFIG_BUILD_FOR_DEBUG), y)
 INTRERDRV_FLAGS += -DDRV_DEBUG -DDRV_TEST
 endif
 
-define COPY_KO
-	( cd $(1) && cp -f *.ko $(INSTALL_DIR); )
-endef
-
 define MAKE_KO
 	( cd $(1) && $(MAKE) KERNEL_DIR=$(KERNEL_DIR) all -j$(shell nproc))
-	( cd $(1) && cp -f *.ko $(INSTALL_DIR); )
+	if [ $$(find $(1) -name '*.ko' | wc -l) -gt 0 ]; then \
+		cd $(1) && cp -f *.ko $(INSTALL_DIR); \
+	fi
 endef
 
 MAKE_EXT_KO_CP :=
@@ -44,9 +42,9 @@ define MAKE_EXT_KO
 	$(call MAKE_EXT_KO_CP, $(1))
 endef
 
-SUBDIRS = $(shell find ./interdrv -maxdepth 2 -mindepth 2 -type d | grep -v "git")
+SUBDIRS = $(shell find ./interdrv -maxdepth 1 -mindepth 1 -type d | grep -v "git")
 SUBDIRS += $(shell find ./extdrv -maxdepth 1 -mindepth 1 -type d | grep -v "git")
-exclude_dirs = ./interdrv/v1/include ./interdrv/v2/include
+exclude_dirs = ./interdrv/include
 SUBDIRS := $(filter-out $(exclude_dirs), $(SUBDIRS))
 
 # prepare ko list
@@ -63,11 +61,11 @@ ifeq ($(CHIP_ARCH), $(filter $(CHIP_ARCH), CV183X CV182X))
 endif
 
 ifeq ($(CVIARCH), $(filter $(CVIARCH), CV181X))
-	KO_LIST += sys vi snsr_i2c cif vpss dwa rgn vo rtos_cmdqu fast_image cvi_vc_drv ive
+	KO_LIST += sys vi snsr_i2c cif vpss dwa rgn vo rtos_cmdqu fast_image cvi_vc_drv ive #motor trng
 	BASE_DEP = sys
 	FB_DEP = vpss
 else ifeq ($(CVIARCH), $(filter $(CVIARCH), CV180X))
-	KO_LIST += sys vi snsr_i2c cif vpss dwa rgn rtos_cmdqu fast_image cvi_vc_drv
+	KO_LIST += sys vi snsr_i2c cif vpss dwa rgn rtos_cmdqu fast_image cvi_vc_drv #motor
 	BASE_DEP = sys
 	FB_DEP = vpss
 endif
@@ -116,7 +114,7 @@ fast_image: rtos_cmdqu
 	@$(call MAKE_KO, ${INTERDRV_PATH}/${@})
 
 jpeg:
-	$(call COPY_KO, ${INTERDRV_PATH}/${@}/$(shell echo $(CHIP_ARCH) | tr A-Z a-z)/${SDK_VER})
+	@$(call MAKE_KO, ${INTERDRV_PATH}/${@})
 
 pwm:
 	@$(call MAKE_KO, ${INTERDRV_PATH}/${@})
@@ -176,11 +174,13 @@ ive:
 	@$(call MAKE_KO, ${INTERDRV_PATH}/${@})
 
 cvi_vc_drv: sys base vcodec jpeg
-	@$(call COPY_KO, ${INTERDRV_PATH}/${@}/$(shell echo $(CHIP_ARCH) | tr A-Z a-z)/${SDK_VER})
+	@$(call MAKE_KO, ${INTERDRV_PATH}/${@})
 
 rtos_cmdqu:
 	@$(call MAKE_KO, ${INTERDRV_PATH}/${@})
 
+trng:
+	@$(call MAKE_KO, ${INTERDRV_PATH}/${@})
 # osdrv/extdrv
 tp:
 	@$(call MAKE_EXT_KO, extdrv/${@})
@@ -192,6 +192,9 @@ wiegand-gpio:
 	@$(call MAKE_EXT_KO, extdrv/${@})
 
 gyro_i2c:
+	@$(call MAKE_EXT_KO, extdrv/${@})
+
+motor:
 	@$(call MAKE_EXT_KO, extdrv/${@})
 
 cp_ext_wireless:

@@ -20,6 +20,11 @@ function print_notice()
   printf "\e[1;34;47m %s \e[0m\n" "$1"
 }
 
+function print_info()
+{
+  printf "\e[1;32m%s\e[0m\n" "$1"
+}
+
 # $1 : The path for removing files
 function remove_unused_files()
 {
@@ -77,7 +82,7 @@ function build_ramboot
   create_ramdisk_folder || return "$?"
   _build_kernel_env
   cd "$BUILD_PATH" || return
-  make ramboot
+  make ramboot || return "$?"
 )}
 
 function pack_boot
@@ -97,6 +102,10 @@ function pack_boot
   if [[ ${BOARD} != "fpga" &&  ${BOARD} != "palladium" ]]; then
     command cp ./boot.itb "$OUTPUT_DIR"/rawimages/boot."$STORAGE_TYPE"
     python3 "$IMGTOOL_PATH"/raw2cimg.py "$OUTPUT_DIR"/rawimages/boot."$STORAGE_TYPE" "$OUTPUT_DIR" "$FLASH_PARTITION_XML"
+    if [[ "${AB_SYSTEM}" == "y" ]]; then
+      command cp ./boot.itb "$OUTPUT_DIR"/rawimages/boot_b."$STORAGE_TYPE"
+      python3 "$IMGTOOL_PATH"/raw2cimg.py "$OUTPUT_DIR"/rawimages/boot_b."$STORAGE_TYPE" "$OUTPUT_DIR" "$FLASH_PARTITION_XML"
+	fi
   else
     command cp ./boot.itb "$OUTPUT_DIR"/boot.itb
   fi
@@ -123,7 +132,7 @@ function pack_rootfs
   export CHIP_FOLDER_PATH SDK_VER_FOLDER_PATH CUST_FOLDER_PATH
 
   cd "$BUILD_PATH" || return
-  make rootfs
+  make rootfs || return "$?"
 )}
 
 function pack_data
@@ -135,7 +144,7 @@ function pack_data
   mkdir -p "$OUTPUT_DIR"/data
   pushd "$OUTPUT_DIR"/data;echo "If you can dream it, you can do it." > sample;popd
   cd "$BUILD_PATH" || return
-  make jffs2
+  make jffs2 || return "$?"
 )}
 
 function clean_rootfs
@@ -154,7 +163,7 @@ function pack_system
 
   cd "$BUILD_PATH" || return
   if [ "$STORAGE_TYPE" == "emmc" ] || [ "$STORAGE_TYPE" == "spinor" ] || [ "$STORAGE_TYPE" == "spinand" ]; then
-    make system
+    make system || return "$?"
   fi
 )}
 
@@ -167,6 +176,7 @@ function pack_gpt
   pushd "$EMMCTOOL_PATH"
   mkdir -p "$OUTPUT_DIR"/rawimages
   make gpt.img PARTITION_XML="$FLASH_PARTITION_XML" INSTALL_DIR="$OUTPUT_DIR"/rawimages
+  test "$?" -eq 0 || return 1
   python3 "$IMGTOOL_PATH"/raw2cimg.py "$OUTPUT_DIR"/rawimages/gpt.img "$OUTPUT_DIR" "$FLASH_PARTITION_XML"
   popd
 )}
@@ -187,7 +197,22 @@ function pack_cfg
 
   cd "$BUILD_PATH" || return
   if [ $STORAGE_TYPE != "sd" ]; then
-    make cfg
+    make cfg || return "$?"
+  fi
+)}
+
+function copy_tools
+{(
+  # Copy USB_DL, partition.xml and bootlogo
+  if [[ "${chip_cv[*]}" =~ "$CHIP" ]] && [[ ${BOARD} != "fpga" &&  ${BOARD} != "palladium" ]]; then
+    command rm -rf "$OUTPUT_DIR"/tools
+    command mkdir -p "$OUTPUT_DIR"/tools/
+    command cp -rf "$TOOLS_PATH"/common/usb_dl/ "$OUTPUT_DIR"/tools/
+
+    # All targets are run, and other functions decide whether to use it
+    python3 "$IMGTOOL_PATH"/raw2cimg.py "$BOOTLOGO_PATH" "$OUTPUT_DIR" "$FLASH_PARTITION_XML"
+
+    command cp --remove-destination "$FLASH_PARTITION_XML" "$OUTPUT_DIR"/
   fi
 )}
 
@@ -234,7 +259,8 @@ function pack_burn_image
 {(
   pushd "$OUTPUT_DIR"
   [ -d tmp ] && rm -rf tmp
-  [ -d br-rootfs ] && rm -rf br-rootfs && mkdir br-rootfs
+  [ -d br-rootfs ] && rm -rf br-rootfs
+  mkdir br-rootfs
   tar xf $BR_DIR/output/$BR_BOARD/images/rootfs.tar.xz -C br-rootfs
 
   # genimage
@@ -249,6 +275,13 @@ function pack_burn_image
   popd
 )}
 
+function pack_sd_image
+{(
+  pushd "$BUILD_PATH"
+  make sd_image || return "$?"
+  popd
+)}
+
 function pack_prog_img
 {(
   local tmp_dir
@@ -257,7 +290,7 @@ function pack_prog_img
   rm -rf "${tmp_dir:?}/"*
   if [[ "$STORAGE_TYPE" = "spinand" ]]; then
     pushd "$SPINANDTOOL_PATH"/sv_tool
-    make
+    make || return "$?"
     ./create_sv -c 5 -o "$tmp_dir"/sv.bin
     popd
     cp "$OUTPUT_DIR"/rawimages/*."$STORAGE_TYPE" "$tmp_dir"

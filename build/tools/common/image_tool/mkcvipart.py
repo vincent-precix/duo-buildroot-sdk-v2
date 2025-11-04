@@ -107,6 +107,10 @@ def gen_cvipart_h(output, parser):
                 else:
                     comma = ","
                 of.write("%s(%s)%s" % (part_size, p["label"], comma))
+            # For A/B boot
+            for i, p in enumerate(parts):
+                if p["label"] == "MISC":
+                    of.write('#define MISC_START 0x%x\n' % int(p["offset"] / LBA_SIZE))
 
         elif parser.getStorage() == "spinor":
             if env_exist:
@@ -137,7 +141,6 @@ def gen_cvipart_h(output, parser):
                 if p["label"] == "ROOTFS":
                     of.write('#define ROOTFS_DEV "/dev/mmcblk0p%d"\n' % (i+1))
                     break
-            of.write('#define PARTS_OFFSET ""\n')
 
         elif parser.getStorage() == "none":
             of.write('#define PART_LAYOUT ""\n')
@@ -160,10 +163,10 @@ def gen_cvipart_h(output, parser):
             )
 
         # Generintg PART_ENV
-        if parser.getStorage() == "emmc":
+        if parser.getStorage() == "emmc" or parser.getStorage() == "sd":
             LBA_SIZE = 512
 
-        if parser.getStorage() != "none" and parser.getStorage() != "sd":
+        if parser.getStorage() != "none":
             of.write("#define PARTS_OFFSET \\\n")
             for i, p in enumerate(parts):
                 of.write('"%s_PART_OFFSET=0x%x\\0" \\\n' % (p["label"], int(p["offset"] / LBA_SIZE)))
@@ -203,7 +206,7 @@ def gen_fw_config(output, parser, block_size=128 * 1024):
                 elif parser.storage == "emmc":
                     of.write(
                         "/dev/mmcblk0 0x%x 0x%x\n"
-                        % ((parts[part_index]["offset"] * 512), parts[part_index]["part_size"])
+                        % ((parts[part_index]["offset"]), parts[part_index]["part_size"])
                     )
                 elif parser.storage == "spinor":
                     of.write(

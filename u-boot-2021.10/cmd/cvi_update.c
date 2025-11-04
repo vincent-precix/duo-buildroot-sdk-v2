@@ -29,8 +29,7 @@ static uint32_t lastend;
 uint32_t update_magic;
 
 
-#if (!defined CONFIG_TARGET_CVITEK_CV181X_FPGA) && (!defined CONFIG_TARGET_CVITEK_ATHENA2_FPGA) && \
-	(!defined ATHENA2_FPGA_PALLDIUM_ENV)
+#if (!defined CONFIG_TARGET_CVITEK_CV181X_FPGA) && (!defined CONFIG_TARGET_CVITEK_ATHENA2_FPGA)
 static uint32_t bcd2hex4(uint32_t bcd)
 {
 	return ((bcd) & 0x0f) + (((bcd) >> 4) & 0xf0) + (((bcd) >> 8) & 0xf00) + (((bcd) >> 12) & 0xf000);
@@ -113,8 +112,7 @@ int _prgImage(char *file, uint32_t chunk_header_size, char *file_name)
 	return size;
 }
 
-#if (!defined CONFIG_TARGET_CVITEK_CV181X_FPGA) && (!defined CONFIG_TARGET_CVITEK_ATHENA2_FPGA) && \
-	(!defined ATHENA2_FPGA_PALLDIUM_ENV)
+#if (!defined CONFIG_TARGET_CVITEK_CV181X_FPGA) && (!defined CONFIG_TARGET_CVITEK_ATHENA2_FPGA)
 static int _checkHeader(char *file, char strStorage[10])
 {
 	char *magic = (void *)HEADER_ADDR;
@@ -330,7 +328,14 @@ int uart_download(void *buf, const char *filename)
 		return ret;
 	}
 
+	uint32_t version = *(uint32_t *)((uintptr_t)HEADER_ADDR + 4);
 	uint32_t chunk_header_sz = *(uint32_t *)((uintptr_t)HEADER_ADDR + 8);
+	uint32_t total_chunk = *(uint32_t *)((uintptr_t)HEADER_ADDR + 12);
+	uint32_t file_sz = *(uint32_t *)((uintptr_t)HEADER_ADDR + 16);
+#ifdef CONFIG_NAND_SUPPORT
+	char *extra = (void *)((uintptr_t)HEADER_ADDR + 20);
+	static char prevExtra[EXTRA_FLAG_SIZE + 1] = { '\0' };
+#endif
 
 	ret = strncmp(magic, HEADER_MAGIC, 4);
 	if (ret) {
@@ -338,10 +343,35 @@ int uart_download(void *buf, const char *filename)
 		return ret;
 	}
 
-	ret = _prgImage((void *)(HEADER_ADDR + HEADER_SIZE), chunk_header_sz, NULL);
-	if (ret == 0) {
-		printf("Program file %s failed!\n", filename);
-		return ret;
+	printf("Header Version:%d\n", version);
+	uint32_t pos = HEADER_SIZE;
+#ifdef CONFIG_NAND_SUPPORT
+	// Erase partition first
+	if (strncmp(extra, prevExtra, EXTRA_FLAG_SIZE)) {
+		strncpy(prevExtra, extra, EXTRA_FLAG_SIZE);
+		snprintf(cmd, 255, "nand erase.part -y %s", prevExtra);
+		pr_debug("%s\n", cmd);
+		run_command(cmd, 0);
+	}
+#endif
+
+	for (int i = 0; i < total_chunk; i++) {
+		uint32_t load_size = file_sz > (MAX_LOADSIZE + chunk_header_sz) ?
+				     MAX_LOADSIZE + chunk_header_sz :
+				     file_sz;
+		snprintf(cmd, 255, "loadb %p %d ", (void *)UPDATE_ADDR, UART_DL_BAUDRATE);
+		pr_debug("%s\n", cmd);
+		ret = run_command(cmd, 0);
+		if (ret)
+			return ret;
+
+		ret = _prgImage((void *)UPDATE_ADDR, chunk_header_sz, NULL);
+		if (ret == 0) {
+			printf("program file:%s failed\n", filename);
+			break;
+		}
+		pos += load_size;
+		file_sz -= load_size;
 	}
 	return 0;
 }
@@ -406,8 +436,7 @@ static int do_cvi_update(struct cmd_tbl *cmdtp, int flag, int argc,
 			 char *const argv[])
 {
 
-#if (!defined CONFIG_TARGET_CVITEK_CV181X_FPGA) && (!defined CONFIG_TARGET_CVITEK_ATHENA2_FPGA) && \
-	(!defined ATHENA2_FPGA_PALLDIUM_ENV)
+#if (!defined CONFIG_TARGET_CVITEK_CV181X_FPGA) && (!defined CONFIG_TARGET_CVITEK_ATHENA2_FPGA)
 	int ret = 1;
 	uint32_t usb_pid = 0;
 

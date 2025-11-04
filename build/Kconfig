@@ -181,13 +181,6 @@ config CROSS_COMPILE_SDK
 	  Cross compile toolchain prefix for middleware.
 	  This will modify by TOOLCHAN_XLIBC
 
-config MW_VER
-	string
-	default "v1" if CHIP_ARCH_cv183x || CHIP_ARCH_cv182x
-	default "v2" if CHIP_ARCH_cv181x || CHIP_ARCH_cv180x
-	help
-	  Set middleware version.
-
 config SDK_VER
 	string
 	default "64bit" if TOOLCHAIN_GLIBC_ARM64
@@ -219,6 +212,33 @@ config BUILD_FOR_DEBUG
 	  "n":build kernel with release config(disable CONFIG_DEBUG_FS and so on)
 	      build uboot without commands.
 
+menuconfig BUILD_FOR_FASTBOOT
+	bool "Build SDK with fastboot mode"
+	depends on !BUILD_FOR_DEBUG
+	default n
+
+if BUILD_FOR_FASTBOOT
+
+config FSBL_FASTBOOT
+	bool "optimization fsbl boottime"
+	default y
+
+config OPENSBI_FASTBOOT
+	bool "optimization opensbi boottime"
+	default y
+
+config UBOOT_FASTBOOT
+	bool "optimization uboot boottime"
+	default y
+	select UBOOT_SPL_CUSTOM
+
+config KERNEL_FASTBOOT
+	bool
+	default y
+
+endif # BUILD_FOR_FASTBOOT
+
+
 config ENABLE_SDK_ASAN
 	bool "Enable SDK sanitizer"
 	default n
@@ -240,7 +260,6 @@ config FLASH_SIZE_SHRINK
 
 config CP_EXT_WIRELESS
 	bool "Install the osdrv/extdrv/wireless/*.ko"
-	depends on FLASH_SIZE_SHRINK
 	default n
 	help
       Install the osdrv/extdrv/wireless/*.ko no matter
@@ -248,12 +267,10 @@ config CP_EXT_WIRELESS
 
 config NO_FB
 	bool "Do not compile frame buffer drivers"
-	depends on FLASH_SIZE_SHRINK
 	default n
 
 config NO_TP
 	bool "Select CONFIG_NO_TP to build osdrv without Touchscreen driver(extdrv/tp)"
-	depends on FLASH_SIZE_SHRINK
 	default n
 	help
 	  TP: Touchscreen driver(extdrv/tp)
@@ -278,6 +295,16 @@ config DDR_64MB_SIZE
 	bool "Compile 64MB DDR size project"
 	default n
 
+config AB_SYSTEM
+    bool "Enable ab system"
+    depends on !UBOOT_SPL_CUSTOM
+    default n
+    help
+      Enable A/B boot function.(Currently, spl boot is not supported.)
+      The BOOT and ROOTFS partitions are backed up to ensure that the
+      system can be automatically switched to the inactive partition
+      for boot if the related upgrade fails.
+      For details, see Android A/B system Description.
 endmenu
 
 menu "FIP setting"
@@ -336,7 +363,7 @@ config OD_CLK_SEL
 
 config VC_CLK_OVERDRIVE
 	bool "Select to build fip.bin with VC clock overdrived setting"
-	depends on CHIP_ARCH_cv181x && !OD_CLK_SEL
+	depends on !OD_CLK_SEL
 	default n
 	help
 	  "y" Select to build fip.bin with VC clock overdrived setting
@@ -380,6 +407,21 @@ config NANDFLASH_PAGESIZE
 	default 2048
 	help
 	  The page size of nand flash
+
+config ENABLE_EMMC_SET_RESET_OTP
+	bool "Enable eMMC set OTP bit for hardware reset"
+	default N
+	depends on STORAGE_TYPE_emmc
+	help
+	  "y": The OTP bit: "RST_n_ENABLE" of this emmc chip will be permanently enabled
+
+config ENABLE_EMMC_HW_RESET_QFN
+	bool "Enable EMMC hardware reset for QFN"
+	default N
+	depends on STORAGE_TYPE_emmc && ENABLE_EMMC_SET_RESET_OTP
+	help
+		"y": Enable EMMC hardware reset for QFN (will use GPIOA_19(JTAG_CPU_TMS) to reset)
+		"n": Enable EMMC hardware reset for BGA (default)
 endmenu
 
 source "output/Kconfig.sensors"
@@ -476,12 +518,21 @@ endchoice
 
 config KERNEL_COMPRESS
 	string
+	default "none" if KERNEL_FASTBOOT
 	default "gzip" if KERNEL_GZIP
 	default "lzma" if KERNEL_LZMA
 	default "lz4" if KERNEL_LZ4
 	default "none" if KERNEL_UNCOMPRESSED
 	help
 	  Set kernel source code.
+
+config SUSPEND
+	bool "Suspend to RAM and standby"
+	default n
+	help
+		Allow the system to enter sleep states in which main memory is
+		powered and thus its contents are preserved, such as the
+		suspend-to-RAM state (e.g. the ACPI S3 state).
 endmenu
 
 menu "ROOTFS options"
@@ -532,6 +583,20 @@ config BUILD_TURNKEY_IPC
 endmenu
 
 menu "RTOS options"
+
+config ENABLE_BOOT0
+	bool "Enable BOOT0"
+	depends on CHIP_ARCH_cv181x || CHIP_ARCH_cv180x
+	default n
+	help
+	  Enable boot0.
+
+config ENABLE_FASTBOOT0
+	bool "Enable FASTBOOT0"
+	depends on ENABLE_BOOT0
+	default n
+	help
+	  Enable fastboot0.
 
 config ENABLE_FREERTOS
 	bool "Enable FREERTOS"
@@ -609,6 +674,6 @@ config ALIOS_SOLUTION
 
 endmenu
 
-menu "Rootfs packages"
-osource "../ramdisk/rootfs/public/Kconfig"
-endmenu
+#menu "Rootfs packages"
+#osource "../ramdisk/rootfs/public/Kconfig"
+#endmenu
