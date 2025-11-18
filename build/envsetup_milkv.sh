@@ -623,15 +623,15 @@ function build_all()
   if [[ "$BOARD" != "fpga" ]] && [[ "$BOARD" != "palladium" ]]; then
     build_osdrv || return $?
     build_3rd_party || return $?
-    build_middleware || return $?
-    build_cvi_rtsp || return $?
-    build_tpu_sdk || return $?
+    #build_middleware || return $?
+    #build_cvi_rtsp || return $?
+    #build_tpu_sdk || return $?
     if [ "$TPU_REL" = 1 ]; then
       build_ive_sdk || return $?
       build_ivs_sdk || return $?
       build_tdl_sdk || return $?
     fi
-    build_pqtool_server || return $?
+    #build_pqtool_server || return $?
   fi
   pack_cfg || return $?
   pack_rootfs || return $?
